@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GGEarth</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <!-- Barra lateral esquerda (como no Google Earth) -->
+  <nav id="rail" aria-label="Menu principal">
+    <button class="rail-btn" data-panel="search" title="Pesquisar (/)">🔍<span>Pesquisar</span></button>
+    <button class="rail-btn" data-panel="voyager" title="Voyager">🧭<span>Voyager</span></button>
+    <button class="rail-btn" id="luckyBtn" title="Estou com sorte">🎲<span>Sorte</span></button>
+    <button class="rail-btn" data-panel="projects" title="Projetos">📁<span>Projetos</span></button>
+    <button class="rail-btn" data-panel="layers" title="Estilo do mapa">🗺️<span>Camadas</span></button>
+    <button class="rail-btn" data-panel="history" title="Imagens históricas">🕰️<span>Histórico</span></button>
+    <button class="rail-btn" id="measureBtn" title="Medir distância e área">📏<span>Medir</span></button>
+    <button class="rail-btn" id="shareBtn" title="Copiar link desta vista">🔗<span>Compartilhar</span></button>
+    <button class="rail-btn" id="screenshotBtn" title="Capturar imagem">📷<span>Capturar</span></button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" data-panel="settings" title="Configurações">⚙️<span>Config.</span></button>
+    <button class="rail-btn" data-panel="help" title="Ajuda e atalhos">❔<span>Ajuda</span></button>
+  </nav>
+
+  <!-- Painel lateral -->
+  <aside id="panel" hidden>
+    <header><h2 id="panelTitle"></h2><button id="panelClose" title="Fechar">✕</button></header>
+    <div id="panelBody">
+
+      <section data-section="search">
+        <form id="searchForm" autocomplete="off">
+          <input id="searchInput" type="search" placeholder="Pesquise lugares, endereços ou lat, lon" />
+          <button type="submit">Ir</button>
+        </form>
+        <ul id="searchResults" class="list"></ul>
+        <h3>Pesquisas recentes</h3>
+        <ul id="searchHistory" class="list small"></ul>
+      </section>
+
+      <section data-section="voyager">
+        <p class="muted">Histórias guiadas pelos lugares mais impressionantes do planeta.</p>
+        <div id="voyagerTours"></div>
+      </section>
+
+      <section data-section="projects">
+        <div class="toolbar">
+          <button data-draw="point">📍 Marcador</button>
+          <button data-draw="line">〰️ Linha</button>
+          <button data-draw="polygon">⬠ Polígono</button>
+        </div>
+        <ul id="projectItems" class="list"></ul>
+        <div class="toolbar">
+          <label class="file-btn">📂 Importar KML/KMZ/GeoJSON<input id="importFile" type="file" accept=".kml,.kmz,.geojson,.json" hidden /></label>
+        </div>
+        <div class="toolbar">
+          <button id="exportKml">⬇️ Exportar KML</button>
+          <button id="exportGeojson">⬇️ Exportar GeoJSON</button>
+          <button id="clearProject" class="danger">🗑️ Limpar</button>
+        </div>
+        <h3>Arquivos importados</h3>
+        <ul id="importedList" class="list small"></ul>
+      </section>
+
+      <section data-section="layers">
+        <h3>Imagem de base</h3>
+        <div id="baseLayers" class="radio-list"></div>
+        <h3>Sobreposições</h3>
+        <div id="overlayLayers" class="check-list"></div>
+        <h3>Globo</h3>
+        <div id="globeOptions" class="check-list"></div>
+        <h3>3D</h3>
+        <div id="threeDOptions" class="check-list"></div>
+      </section>
+
+      <section data-section="history">
+        <p class="muted">Viaje no tempo usando o arquivo <b>Esri World Imagery Wayback</b> (alta resolução, desde 2014) ou as imagens diárias da <b>NASA GIBS</b> (MODIS/VIIRS, desde 2000).</p>
+        <h3>Wayback (alta resolução)</h3>
+        <div id="waybackBox"><p class="muted">Carregando versões…</p></div>
+        <h3>NASA – imagem diária do planeta</h3>
+        <label class="row">Data <input type="date" id="gibsDate" /></label>
+        <div class="toolbar">
+          <button id="gibsApply">Mostrar data</button>
+          <button id="historyOff">Voltar à imagem atual</button>
+        </div>
+      </section>
+
+      <section data-section="settings">
+        <h3>Unidades</h3>
+        <div class="radio-list">
+          <label><input type="radio" name="units" value="metric" checked /> Métrico (m, km)</label>
+          <label><input type="radio" name="units" value="imperial" /> Imperial (ft, mi)</label>
+        </div>
+        <h3>Exagero do relevo</h3>
+        <input id="exaggeration" type="range" min="1" max="5" step="0.5" value="1" /> <span id="exaggerationVal">1×</span>
+        <h3>Animação de voo</h3>
+        <label class="row">Velocidade <input id="flySpeed" type="range" min="0.5" max="6" step="0.5" value="3" /></label>
+        <h3>Chaves de acesso (opcional)</h3>
+        <p class="muted">Para usar os mesmos dados 3D fotorrealistas do Google Earth, informe uma chave da <b>Google Maps Platform</b> (Map Tiles API). Um token do <b>Cesium ion</b> habilita terreno mundial de alta precisão e prédios OSM 3D. As chaves ficam salvas apenas no seu navegador.</p>
+        <label class="col">Google Maps API key <input id="googleKey" type="password" placeholder="AIza…" /></label>
+        <label class="col">Cesium ion token <input id="ionToken" type="password" placeholder="eyJ…" /></label>
+        <div class="toolbar"><button id="saveKeys">Salvar e recarregar</button></div>
+        <h3>Desempenho</h3>
+        <div class="check-list">
+          <label><input type="checkbox" id="showFps" /> Mostrar FPS</label>
+          <label><input type="checkbox" id="highQuality" checked /> Alta qualidade de imagem</label>
+        </div>
+      </section>
+
+      <section data-section="help">
+        <h3>Navegação</h3>
+        <ul class="help">
+          <li><b>Arrastar</b>: mover o globo</li>
+          <li><b>Roda do mouse</b>: zoom</li>
+          <li><b>Ctrl + arrastar</b> / botão direito: inclinar e girar</li>
+          <li><b>Duplo clique</b>: aproximar do ponto</li>
+          <li><b>Clique</b>: ver informações do local (Wikipedia, coordenadas, Street View)</li>
+        </ul>
+        <h3>Atalhos</h3>
+        <ul class="help">
+          <li><kbd>/</kbd> pesquisar</li>
+          <li><kbd>N</kbd> apontar para o norte · <kbd>U</kbd> vista de cima</li>
+          <li><kbd>R</kbd> redefinir vista · <kbd>+</kbd>/<kbd>-</kbd> zoom</li>
+          <li><kbd>F</kbd> modo voo (W/S acelera, A/D gira, Q/E sobe/desce, setas olham)</li>
+          <li><kbd>M</kbd> medir · <kbd>Esc</kbd> cancelar ferramenta</li>
+        </ul>
+        <h3>Fontes de dados</h3>
+        <p class="muted">Imagens: Esri World Imagery, NASA GIBS, OpenStreetMap, OpenTopoMap. Relevo: Esri World Elevation. Pesquisa: OpenStreetMap Nominatim. Conhecimento: Wikipedia. 3D fotorrealista: Google Map Tiles API (com chave).</p>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Cartão de conhecimento -->
+  <div id="infoCard" hidden>
+    <button id="infoClose" title="Fechar">✕</button>
+    <img id="infoImg" alt="" hidden />
+    <div class="info-content">
+      <h2 id="infoTitle"></h2>
+      <p id="infoCoords" class="muted"></p>
+      <p id="infoText"></p>
+      <div class="toolbar" id="infoActions"></div>
+    </div>
+  </div>
+
+  <!-- Controles de navegação -->
+  <div id="navControls">
+    <button id="compass" title="Apontar para o norte (N)"><span id="compassNeedle">➤</span></button>
+    <button id="tiltBtn" title="Alternar 2D/3D (U)">3D</button>
+    <button id="myLocation" title="Minha localização">◎</button>
+    <button id="zoomIn" title="Aproximar">＋</button>
+    <button id="zoomOut" title="Afastar">－</button>
+    <button id="homeBtn" title="Visão do globo (R)">🌐</button>
+    <button id="fullscreenBtn" title="Tela cheia">⛶</button>
+  </div>
+
+  <!-- Barra de ferramenta ativa -->
+  <div id="toolBar" hidden>
+    <span id="toolText"></span>
+    <button id="toolFinish">Concluir</button>
+    <button id="toolCancel">Cancelar</button>
+  </div>
+
+  <!-- Barra de status -->
+  <footer id="statusBar">
+    <span id="statusCredits" class="muted"></span>
+    <span id="statusCoords">—</span>
+    <span id="statusElev"></span>
+    <span id="statusCam"></span>
+  </footer>
+
+  <div id="toast" hidden></div>
+  <div id="flyHud" hidden>✈️ Modo voo — <span id="flySpeedHud">0</span> km/h · F para sair</div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
