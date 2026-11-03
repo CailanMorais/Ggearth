@@ -15,9 +15,9 @@ npm run build    # gera a pasta dist/ (site estático, pode ir para GitHub Pages
 | Globo 3D com imagens de satélite | ✅ Satélite em alta resolução (até ~30 cm em muitas cidades) | Esri World Imagery |
 | Relevo 3D | ✅ Montanhas e vales reais + exagero do relevo | Esri World Elevation (ou Cesium World Terrain com token) |
 | Cidades 3D fotorrealistas | ✅ Os mesmos tiles 3D do Google Earth | Google Photorealistic 3D Tiles (requer chave) |
-| Prédios 3D | ✅ | OSM Buildings (requer token Cesium ion) |
+| Prédios 3D | ✅ Gerados automaticamente ao aproximar, sem chave (versão otimizada opcional com token Cesium ion) | OpenStreetMap (Overpass API) |
 | Pesquisa | ✅ Lugares, endereços, coordenadas, histórico | OpenStreetMap Nominatim |
-| Cartões de conhecimento | ✅ Clique em qualquer lugar: endereço, resumo e foto da Wikipédia, lugares próximos | Nominatim + Wikipédia |
+| Cartões de conhecimento | ✅ Clique em qualquer lugar: o lugar identificado (país, cidade, bairro, prédio… conforme o zoom), endereço e o artigo da Wikipédia vinculado a ele | Nominatim + Wikidata + Wikipédia |
 | Camada de lugares | ✅ Marcadores de artigos da Wikipédia perto da vista | Wikipédia GeoSearch |
 | Voyager | ✅ 5 passeios guiados (maravilhas, natureza, cidades, Brasil, civilizações antigas) com voo e órbita | Curadoria própria + Wikipédia |
 | Estou com sorte | ✅ Lugar aleatório | — |

@@ -112,7 +112,8 @@ export function pickCartesian(viewer, windowPosition) {
   }
   if (scene.pickPositionSupported) {
     const picked = scene.pick(windowPosition);
-    if (picked && picked.primitive instanceof Cesium.Cesium3DTileset) {
+    // Prédios (3D Tiles ou primitivas extrudadas): usa a posição real na superfície do objeto
+    if (picked && (picked.primitive instanceof Cesium.Cesium3DTileset || picked.id?.osmBuilding)) {
       const p = scene.pickPosition(windowPosition);
       if (Cesium.defined(p)) return p;
     }

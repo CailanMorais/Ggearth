@@ -333,7 +333,7 @@ export class LayerManager {
     td.innerHTML = "";
     const tdOpts = [
       { id: "google3d", name: "Cidades 3D fotorrealistas", sub: "Google Photorealistic 3D Tiles (requer chave)" },
-      { id: "osmBuildings", name: "Prédios 3D (OSM)", sub: "Edifícios do OpenStreetMap (requer Cesium ion)" },
+      { id: "osmBuildings", name: "Prédios 3D (Cesium OSM Buildings)", sub: "Versão otimizada, requer token Cesium ion" },
     ];
     for (const t of tdOpts) {
       const label = document.createElement("label");

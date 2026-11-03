@@ -1,5 +1,6 @@
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import { OsmBuildings } from "./modules/buildings.js";
 import { HistoricalImagery } from "./modules/history.js";
 import { Knowledge } from "./modules/knowledge.js";
 import { LayerManager } from "./modules/layers.js";
@@ -59,9 +60,15 @@ const voyager = new Voyager(viewer, { knowledge });
 const nav = new Navigation(viewer);
 const measure = new MeasureTool(viewer);
 const historyImg = new HistoricalImagery(viewer, layers);
+const osmBuildings = new OsmBuildings(viewer);
 
 layers.init().then(() => {
   layers.addOverlayToggle("Lugares da Wikipédia", "Artigos próximos ao centro da vista", knowledge.wikiOn, (on) => knowledge.setWikiLayer(on));
+  const label = document.createElement("label");
+  label.innerHTML = `<input type="checkbox" ${osmBuildings.enabled ? "checked" : ""}/> <span>Prédios 3D<small>Gerados do OpenStreetMap ao aproximar (sem chave)</small></span>`;
+  label.querySelector("input").addEventListener("change", (e) => osmBuildings.setEnabled(e.target.checked));
+  document.getElementById("threeDOptions").prepend(label);
+  osmBuildings.update();
 });
 
 if (!nav.readHash()) {

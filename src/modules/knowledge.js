@@ -3,13 +3,42 @@ import { escapeHtml, fetchJson, formatLatLon, pickCartesian, screenCenter, stora
 
 const WIKI = "https://pt.wikipedia.org";
 
-export async function wikiSummary(title, lang = "pt") {
+/** Resumo de um artigo. Ignora páginas de desambiguação (que não descrevem o lugar). */
+export async function wikiSummary(title, lang = "pt", fallback = true) {
   try {
-    return await fetchJson(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`);
+    const s = await fetchJson(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`);
+    if (s?.type === "disambiguation") throw new Error("desambiguação");
+    return s;
   } catch {
-    if (lang === "pt") return wikiSummary(title, "en");
+    if (fallback && lang === "pt") return wikiSummary(title, "en", false);
     return null;
   }
+}
+
+/**
+ * Artigo vinculado a um objeto do OpenStreetMap (tags wikidata / wikipedia).
+ * Prefere a versão em português via Wikidata, garantindo que o artigo é do mesmo lugar.
+ */
+export async function wikiFromTags(tags) {
+  if (!tags) return null;
+  const qid = tags.wikidata;
+  if (qid && /^Q\d+$/.test(qid)) {
+    try {
+      const d = await fetchJson(
+        `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=sitelinks&sitefilter=ptwiki%7Cenwiki&format=json&origin=*`,
+      );
+      const sl = d?.entities?.[qid]?.sitelinks ?? {};
+      if (sl.ptwiki) return await wikiSummary(sl.ptwiki.title, "pt", false);
+      if (sl.enwiki) return await wikiSummary(sl.enwiki.title, "en", false);
+    } catch {
+      /* segue para a tag wikipedia */
+    }
+  }
+  if (tags.wikipedia) {
+    const m = tags.wikipedia.match(/^([a-z-]+):(.+)$/);
+    if (m) return wikiSummary(m[2], m[1], false);
+  }
+  return null;
 }
 
 export async function wikiNearby(lat, lon, radius = 10000, limit = 50) {
@@ -18,15 +47,41 @@ export async function wikiNearby(lat, lon, radius = 10000, limit = 50) {
   return data?.query?.geosearch ?? [];
 }
 
-export async function reverseGeocode(lat, lon) {
+/** Nível de detalhe do endereço conforme a altitude da câmera (país → prédio). */
+export function zoomForHeight(h) {
+  if (h > 6e6) return 3;
+  if (h > 1.5e6) return 5;
+  if (h > 3e5) return 8;
+  if (h > 6e4) return 10;
+  if (h > 1.2e4) return 12;
+  if (h > 3e3) return 14;
+  if (h > 800) return 16;
+  return 18;
+}
+
+export async function reverseGeocode(lat, lon, zoom = 18) {
   try {
-    const data = await fetchJson(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=pt-BR`,
+    return await fetchJson(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=${zoom}&addressdetails=1&extratags=1&namedetails=1&accept-language=pt-BR`,
     );
-    return data?.display_name ?? null;
   } catch {
     return null;
   }
+}
+
+const TYPE_LABELS = {
+  country: "País", state: "Estado", region: "Região", county: "Condado", city: "Cidade", town: "Cidade", village: "Vila",
+  municipality: "Município", suburb: "Bairro", neighbourhood: "Bairro", quarter: "Bairro", road: "Via", residential: "Rua",
+  primary: "Avenida/Rodovia", secondary: "Avenida", tertiary: "Rua", house: "Imóvel", building: "Edifício", yes: "Edifício",
+  peak: "Pico", volcano: "Vulcão", water: "Corpo d'água", river: "Rio", lake: "Lago", bay: "Baía", beach: "Praia",
+  island: "Ilha", park: "Parque", forest: "Floresta", wood: "Mata", attraction: "Atração turística", museum: "Museu",
+  monument: "Monumento", church: "Igreja", place_of_worship: "Templo", stadium: "Estádio", university: "Universidade",
+  school: "Escola", hospital: "Hospital", airport: "Aeroporto", aerodrome: "Aeroporto", station: "Estação",
+  administrative: "Divisão administrativa", national_park: "Parque nacional", protected_area: "Área protegida",
+};
+
+function placeLabel(r) {
+  return TYPE_LABELS[r?.addresstype] ?? TYPE_LABELS[r?.type] ?? null;
 }
 
 /** Cartão de conhecimento + camada "Lugares da Wikipédia". */
@@ -194,30 +249,67 @@ export class Knowledge {
     });
   }
 
-  async showLocation(lat, lon, knownName) {
+  /**
+   * Mostra informações de um ponto.
+   * opts.name: nome conhecido · opts.tags: tags OSM (wikidata/wikipedia) do lugar · opts.address: endereço já conhecido
+   * opts.zoom: nível de detalhe do endereço · opts.building: tags de um prédio clicado
+   */
+  async showLocation(lat, lon, opts = {}) {
     const seq = ++this.seq;
     this.marker(lat, lon);
     const coords = `${formatLatLon(lat, lon)}  ·  ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-    this.render({ title: knownName ?? "Local selecionado", coords, text: "<span class='muted'>Buscando informações…</span>", actions: this.locationActions(lat, lon, knownName) });
-    const [address, nearby] = await Promise.all([reverseGeocode(lat, lon), wikiNearby(lat, lon, 2000, 5).catch(() => [])]);
+    this.render({ title: opts.name ?? "Local selecionado", coords, text: "<span class='muted'>Buscando informações…</span>", actions: this.locationActions(lat, lon, opts.name) });
+
+    const zoom = opts.zoom ?? zoomForHeight(this.viewer.camera.positionCartographic.height);
+    const r = opts.address ? null : await reverseGeocode(lat, lon, zoom);
     if (seq !== this.seq) return;
-    let html = address ? `<b>Endereço:</b> ${escapeHtml(address)}` : "";
-    let image;
-    let link;
-    let title = knownName ?? address?.split(",")[0] ?? "Local selecionado";
-    if (nearby.length) {
-      const s = await wikiSummary(nearby[0].title);
+    const tags = opts.tags ?? r?.extratags ?? null;
+    const summary = await wikiFromTags(tags);
+    if (seq !== this.seq) return;
+
+    const b = opts.building;
+    const name =
+      opts.name ?? b?.name ?? r?.namedetails?.["name:pt"] ?? r?.name ?? r?.address?.road ?? r?.display_name?.split(",")[0] ?? "Local selecionado";
+    const kind = b ? "Edifício" : placeLabel(r);
+    const address = opts.address ?? r?.display_name;
+
+    let html = "";
+    if (kind) html += `<span class="muted">${escapeHtml(kind)}</span><br/>`;
+    if (b) {
+      const facts = [];
+      if (b.height) facts.push(`altura ≈ ${Math.round(b.height)} m`);
+      if (b["building:levels"]) facts.push(`${escapeHtml(b["building:levels"])} andares`);
+      const addr = [b["addr:street"], b["addr:housenumber"]].filter(Boolean).join(", ");
+      if (addr) facts.push(escapeHtml(addr));
+      if (facts.length) html += facts.join(" · ") + "<br/>";
+    }
+    if (address) html += `<b>Endereço:</b> ${escapeHtml(address)}<br/>`;
+    if (summary) {
+      html += `<br/>${escapeHtml(summary.extract)}`;
+    } else if (zoom >= 14) {
+      // Sem artigo do próprio lugar: lista artigos realmente próximos, com a distância.
+      const nearby = await wikiNearby(lat, lon, 400, 5).catch(() => []);
       if (seq !== this.seq) return;
-      if (s) {
-        html += `<br/><br/><b>${escapeHtml(s.title)}</b> <span class="muted">(${Math.round(nearby[0].dist)} m)</span><br/>${escapeHtml(s.extract)}`;
-        image = s.thumbnail?.source;
-        link = s.content_urls?.desktop?.page;
-      }
-      if (nearby.length > 1) {
-        html += `<br/><br/><span class="muted">Por perto: ${nearby.slice(1).map((n) => escapeHtml(n.title)).join(" · ")}</span>`;
+      if (nearby.length) {
+        html += `<br/><span class="muted">Por perto:</span><ul style="margin:4px 0;padding-left:18px">${nearby
+          .map((n) => `<li><a href="#" data-wiki="${escapeHtml(n.title)}" data-lat="${n.lat}" data-lon="${n.lon}" style="color:var(--accent)">${escapeHtml(n.title)}</a> <span class="muted">(${Math.round(n.dist)} m)</span></li>`)
+          .join("")}</ul>`;
       }
     }
-    this.render({ title, coords, text: html || "Sem informações para este ponto.", image, link, actions: this.locationActions(lat, lon, title) });
+    this.render({
+      title: name,
+      coords,
+      text: html || "Sem informações para este ponto.",
+      image: summary?.thumbnail?.source,
+      link: summary?.content_urls?.desktop?.page,
+      actions: this.locationActions(lat, lon, name),
+    });
+    document.querySelectorAll("#infoText [data-wiki]").forEach((a) =>
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.showWiki(a.dataset.wiki, Number(a.dataset.lat), Number(a.dataset.lon));
+      }),
+    );
   }
 
   /** Clique no mapa. */
@@ -246,6 +338,10 @@ export class Knowledge {
     const cart = pickCartesian(this.viewer, screenPos);
     if (!cart) return this.hide();
     const { lat, lon } = toDegrees(cart);
+    if (picked?.id?.osmBuilding) {
+      const t = picked.id.tags ?? {};
+      return this.showLocation(lat, lon, { zoom: 18, building: { ...t, height: picked.id.height }, tags: t.wikidata || t.wikipedia ? t : undefined });
+    }
     this.showLocation(lat, lon);
   }
 }

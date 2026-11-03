@@ -44,7 +44,7 @@ export class Search {
     this.results.innerHTML = `<li class="muted">Pesquisando…</li>`;
     try {
       const data = await fetchJson(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&accept-language=pt-BR&extratags=1&q=${encodeURIComponent(q)}`,
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&accept-language=pt-BR&extratags=1&namedetails=1&q=${encodeURIComponent(q)}`,
       );
       this.renderResults(data);
       if (flyFirst && data[0]) this.goResult(data[0]);
@@ -67,7 +67,14 @@ export class Search {
 
   goResult(r) {
     const bbox = r.boundingbox?.map(Number);
-    this.go({ name: r.display_name.split(",")[0], lat: Number(r.lat), lon: Number(r.lon), bbox, wiki: r.extratags?.wikipedia });
+    this.go({
+      name: r.namedetails?.["name:pt"] || r.name || r.display_name.split(",")[0],
+      lat: Number(r.lat),
+      lon: Number(r.lon),
+      bbox,
+      address: r.display_name,
+      tags: r.extratags?.wikidata || r.extratags?.wikipedia ? { wikidata: r.extratags.wikidata, wikipedia: r.extratags.wikipedia } : null,
+    });
   }
 
   go(place) {
@@ -91,18 +98,18 @@ export class Search {
   }
 
   afterFly(place) {
-    if (place.wiki) {
-      const [lang, ...title] = place.wiki.split(":");
-      if (lang === "pt" || lang === "en") {
-        this.knowledge.marker(place.lat, place.lon);
-        return this.knowledge.showWiki(title.join(":"), place.lat, place.lon);
-      }
+    // Nível de detalhe conforme o tamanho da área encontrada
+    let zoom = 17;
+    if (place.bbox) {
+      const [s, n, w, e] = place.bbox;
+      const span = Math.max(n - s, e - w);
+      zoom = span > 20 ? 3 : span > 5 ? 5 : span > 1 ? 8 : span > 0.2 ? 10 : span > 0.05 ? 12 : span > 0.01 ? 14 : 17;
     }
-    this.knowledge.showLocation(place.lat, place.lon, place.name);
+    this.knowledge.showLocation(place.lat, place.lon, { name: place.name, tags: place.tags ?? undefined, address: place.address, zoom });
   }
 
   addHistory(place) {
-    this.history = [{ name: place.name, lat: place.lat, lon: place.lon, bbox: place.bbox }, ...this.history.filter((h) => h.name !== place.name)].slice(0, 12);
+    this.history = [{ name: place.name, lat: place.lat, lon: place.lon, bbox: place.bbox, tags: place.tags, address: place.address }, ...this.history.filter((h) => h.name !== place.name)].slice(0, 12);
     storageSet(HISTORY_KEY, this.history);
     this.renderHistory();
   }
