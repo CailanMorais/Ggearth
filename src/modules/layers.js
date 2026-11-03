@@ -1,4 +1,5 @@
 import * as Cesium from "cesium";
+import { createOpenTerrainProvider } from "./terrain.js";
 import { settings, storageGet, storageSet, toast } from "./util.js";
 
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
@@ -64,6 +65,22 @@ export const BASE_LAYERS = [
 ];
 
 const OVERLAYS = [
+  {
+    id: "lotesLondrina",
+    name: "Lotes – Londrina",
+    sub: "Contorno dos lotes (Prefeitura) ao aproximar",
+    default: true,
+    minimumTerrainLevel: 13,
+    create: () =>
+      new Cesium.UrlTemplateImageryProvider({
+        url:
+          "https://geo.londrina.pr.gov.br/server/rest/services/Gerais/Lotes_e_Glebas/MapServer/export" +
+          "?bbox={westProjected},{southProjected},{eastProjected},{northProjected}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image",
+        rectangle: Cesium.Rectangle.fromDegrees(-51.45, -23.8, -50.8, -23.0),
+        maximumLevel: 20,
+        credit: new Cesium.Credit("Lotes: Prefeitura de Londrina / IPPUL"),
+      }),
+  },
   { id: "labels", name: "Fronteiras e rótulos", sub: "Países, estados, cidades", default: true, create: () => esri("Reference/World_Boundaries_and_Places") },
   { id: "roads", name: "Estradas", sub: "Rodovias e ruas", default: false, create: () => esri("Reference/World_Transportation") },
   {
@@ -136,7 +153,7 @@ export class LayerManager {
     const def = OVERLAYS.find((o) => o.id === id);
     if (!def) return;
     if (on && !this.overlayLayers[id]) {
-      const layer = new Cesium.ImageryLayer(def.create(), { alpha: def.alpha ?? 1 });
+      const layer = new Cesium.ImageryLayer(def.create(), { alpha: def.alpha ?? 1, minimumTerrainLevel: def.minimumTerrainLevel });
       this.layers.add(layer);
       this.overlayLayers[id] = layer;
     } else if (!on && this.overlayLayers[id]) {
@@ -172,9 +189,7 @@ export class LayerManager {
       } else if (settings.ionToken) {
         viewer.terrainProvider = await Cesium.createWorldTerrainAsync({ requestVertexNormals: true, requestWaterMask: true });
       } else {
-        viewer.terrainProvider = await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl(
-          "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer",
-        );
+        viewer.terrainProvider = createOpenTerrainProvider();
       }
     } catch (err) {
       console.warn("Terreno indisponível", err);

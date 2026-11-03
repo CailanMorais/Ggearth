@@ -1,4 +1,5 @@
 import * as Cesium from "cesium";
+import { sampleHeights } from "./terrain.js";
 
 const SETTINGS_KEY = "ggearth.settings";
 const DEFAULT_SETTINGS = {
@@ -132,16 +133,18 @@ export function screenCenter(viewer) {
   return pickCartesian(viewer, new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2));
 }
 
-async function groundHeight(viewer, lat, lon) {
+/** Altitude do terreno em um ponto (fonte aberta; funciona mesmo antes de carregar os tiles). */
+export async function groundHeight(viewer, lat, lon) {
   const tp = viewer.terrainProvider;
   if (!tp || tp instanceof Cesium.EllipsoidTerrainProvider) return 0;
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
   try {
-    const carto = Cesium.Cartographic.fromDegrees(lon, lat);
-    const sample = Promise.race([
-      Cesium.sampleTerrainMostDetailed(tp, [carto]).then((r) => r[0].height || 0),
-      new Promise((resolve) => setTimeout(() => resolve(0), 2500)),
-    ]);
-    return await sample;
+    if (tp instanceof Cesium.CustomHeightmapTerrainProvider) {
+      const [h] = (await Promise.race([sampleHeights([{ lat, lon }]), timeout])) ?? [0];
+      return h * (viewer.scene.verticalExaggeration || 1);
+    }
+    const r = await Promise.race([Cesium.sampleTerrainMostDetailed(tp, [Cesium.Cartographic.fromDegrees(lon, lat)]), timeout]);
+    return r?.[0]?.height ?? 0;
   } catch {
     return 0;
   }

@@ -1,4 +1,6 @@
 import * as Cesium from "cesium";
+import { cadastroFor } from "../data/cadastros.js";
+import { Cadastro } from "./cadastro.js";
 import { escapeHtml, fetchJson, formatLatLon, pickCartesian, screenCenter, storageGet, storageSet, toast, toDegrees } from "./util.js";
 
 const WIKI = "https://pt.wikipedia.org";
@@ -96,6 +98,8 @@ export class Knowledge {
     this.wikiOn = storageGet("ggearth.wiki", true);
     this.requestId = 0;
     this.seq = 0;
+    this.extraHtml = "";
+    this.cadastro = new Cadastro(viewer);
     this.loaded = new Set();
     this.icon = new Cesium.PinBuilder().fromText("W", Cesium.Color.fromCssColorString("#5f6368"), 30).toDataURL();
     viewer.camera.moveEnd.addEventListener(() => this.refreshWiki());
@@ -160,6 +164,8 @@ export class Knowledge {
 
   hide() {
     this.seq++;
+    this.extraHtml = "";
+    this.cadastro.clear();
     this.card.hidden = true;
     this.viewer.entities.removeById("info-marker");
   }
@@ -193,6 +199,7 @@ export class Knowledge {
       act.appendChild(a);
     }
     for (const a of actions ?? []) act.appendChild(a);
+    document.getElementById("infoExtra").innerHTML = this.extraHtml;
     this.card.hidden = false;
   }
 
@@ -215,6 +222,12 @@ export class Knowledge {
       link("🚶 Street View", `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`),
       link("📸 Mapillary", `https://www.mapillary.com/app/?lat=${lat}&lng=${lon}&z=17`),
       link("🧭 Rotas", `https://www.openstreetmap.org/directions?to=${lat}%2C${lon}`),
+      ...(lat < 5.5 && lat > -34 && lon > -74 && lon < -32
+        ? [
+            link("🏛️ Achar cartório", "https://www.registrodeimoveis.org.br/"),
+            link("📜 Certidão de matrícula (ONR)", "https://ridigital.org.br/"),
+          ]
+        : []),
       mk("📍 Salvar no projeto", () => {
         this.projects.addPointAt(lat, lon, name);
         toast("Marcador adicionado ao projeto.");
@@ -232,6 +245,8 @@ export class Knowledge {
 
   async showWiki(title, lat, lon) {
     const seq = ++this.seq;
+    this.extraHtml = "";
+    this.cadastro.clear();
     this.render({ title, coords: lat != null ? formatLatLon(lat, lon) : "", text: "<span class='muted'>Carregando…</span>", actions: [] });
     const s = await wikiSummary(title);
     if (seq !== this.seq) return;
@@ -257,6 +272,22 @@ export class Knowledge {
   async showLocation(lat, lon, opts = {}) {
     const seq = ++this.seq;
     this.marker(lat, lon);
+    this.cadastro.clear();
+    this.extraHtml = cadastroFor(lat, lon) ? `<p class="muted">🏛️ Consultando o cadastro da prefeitura…</p>` : "";
+    if (this.extraHtml) {
+      this.cadastro
+        .lookup(lat, lon)
+        .then((html) => {
+          if (seq !== this.seq) return;
+          this.extraHtml = html ?? "";
+          document.getElementById("infoExtra").innerHTML = this.extraHtml;
+        })
+        .catch((err) => {
+          if (seq !== this.seq) return;
+          this.extraHtml = `<p class="muted">Cadastro indisponível: ${escapeHtml(err.message)}</p>`;
+          document.getElementById("infoExtra").innerHTML = this.extraHtml;
+        });
+    }
     const coords = `${formatLatLon(lat, lon)}  ·  ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
     this.render({ title: opts.name ?? "Local selecionado", coords, text: "<span class='muted'>Buscando informações…</span>", actions: this.locationActions(lat, lon, opts.name) });
 
@@ -316,8 +347,12 @@ export class Knowledge {
   async handleClick(screenPos) {
     this.seq++;
     const picked = this.viewer.scene.pick(screenPos);
-    const entity = picked?.id instanceof Cesium.Entity ? picked.id : null;
+    let entity = picked?.id instanceof Cesium.Entity ? picked.id : null;
+    // Destaque do lote e marcador do clique não são "objetos": trata como clique no chão
+    if (entity && (entity.id === "info-marker" || this.cadastro.highlight.entities.contains(entity))) entity = null;
     if (entity) {
+      this.extraHtml = "";
+      this.cadastro.clear();
       const props = entity.properties;
       const wikiTitle = props?.wikiTitle?.getValue();
       if (wikiTitle) {

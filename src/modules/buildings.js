@@ -1,8 +1,14 @@
 import * as Cesium from "cesium";
-import { screenCenter, storageGet, storageSet, toDegrees } from "./util.js";
+import { sampleHeights } from "./terrain.js";
+import { screenCenter, storageGet, storageSet, toast, toDegrees } from "./util.js";
 
 // Prédios 3D gerados a partir do OpenStreetMap (Overpass API) – não precisa de chave.
-const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
 const CELL = 0.006; // ~650 m
 const MAX_CELLS = 36;
 const MAX_CAMERA_HEIGHT = 3500; // m acima do solo
@@ -71,7 +77,14 @@ export class OsmBuildings {
 
   async update() {
     if (!this.enabled || !this.viewer.scene.globe.show) return;
-    if (this.cameraHeightAboveGround() > MAX_CAMERA_HEIGHT) return;
+    if (this.cameraHeightAboveGround() > MAX_CAMERA_HEIGHT) {
+      const h = this.cameraHeightAboveGround();
+      if (h < 12000 && !this.hintShown) {
+        this.hintShown = true;
+        toast("Aproxime mais (menos de 3 km) para ver os prédios 3D.", 3500);
+      }
+      return;
+    }
     const center = screenCenter(this.viewer);
     if (!center) return;
     const { lat, lon } = toDegrees(center);
@@ -142,11 +155,15 @@ export class OsmBuildings {
         return Cesium.Cartographic.fromDegrees(lo / wy.geometry.length, la / wy.geometry.length);
       });
       const tp = this.viewer.terrainProvider;
-      if (tp && !(tp instanceof Cesium.EllipsoidTerrainProvider)) {
+      const exag = this.viewer.scene.verticalExaggeration || 1;
+      if (tp instanceof Cesium.CustomHeightmapTerrainProvider) {
+        const hs = await sampleHeights(centroids.map((c) => ({ lon: Cesium.Math.toDegrees(c.longitude), lat: Cesium.Math.toDegrees(c.latitude) })));
+        centroids.forEach((c, i) => (c.height = hs[i] * exag));
+      } else if (tp && !(tp instanceof Cesium.EllipsoidTerrainProvider)) {
         try {
           await Cesium.sampleTerrainMostDetailed(tp, centroids);
         } catch {
-          centroids.forEach((c) => (c.height = 0));
+          centroids.forEach((c) => (c.height = this.viewer.scene.globe.getHeight(c) ?? 0));
         }
       } else centroids.forEach((c) => (c.height = 0));
 
@@ -182,9 +199,18 @@ export class OsmBuildings {
         asynchronous: true,
       });
       this.collection.add(primitive);
+      this.total = (this.total ?? 0) + instances.length;
+      if (!this.firstShown && instances.length) {
+        this.firstShown = true;
+        toast(`Prédios 3D carregados. Incline a vista (dois dedos para cima) para ver o volume.`, 4000);
+      }
       this.cells.set(key, { primitive, ids, ts: Date.now() });
     } catch (err) {
       console.warn("Prédios OSM indisponíveis", err);
+      if (!this.errorShown) {
+        this.errorShown = true;
+        toast("Prédios 3D: servidor do OpenStreetMap ocupado (" + err.message + "). Tente mover o mapa novamente.", 5000);
+      }
     } finally {
       this.loading.delete(key);
     }
