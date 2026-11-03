@@ -61,6 +61,10 @@ const nav = new Navigation(viewer);
 const measure = new MeasureTool(viewer);
 const historyImg = new HistoricalImagery(viewer, layers);
 const osmBuildings = new OsmBuildings(viewer);
+// Com o 3D fotorrealista do Google ligado, os blocos do OpenStreetMap ficam ocultos (evita sobreposição)
+layers.onGoogle3d = (on) => {
+  osmBuildings.collection.show = !on && osmBuildings.enabled;
+};
 
 layers.init().then(() => {
   layers.addOverlayToggle("Lugares da Wikipédia", "Artigos próximos ao centro da vista", knowledge.wikiOn, (on) => knowledge.setWikiLayer(on));

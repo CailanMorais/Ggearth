@@ -134,6 +134,7 @@ export class LayerManager {
     this.renderUI();
     await this.applyTerrain();
     this.applyGlobeOptions();
+    this.restoreTilesets();
   }
 
   save() {
@@ -250,6 +251,25 @@ export class LayerManager {
     }
   }
 
+  saveTile(id, on) {
+    this.state.tiles = { ...(this.state.tiles ?? {}), [id]: on };
+    this.save();
+  }
+
+  /** Reativa as camadas 3D salvas; com chave do Google, liga o 3D fotorrealista por padrão. */
+  async restoreTilesets() {
+    const tiles = this.state.tiles ?? {};
+    const wantGoogle = tiles.google3d ?? !!settings.googleKey;
+    if (wantGoogle && (settings.googleKey || settings.ionToken)) {
+      const ok = await this.setTileset("google3d", true);
+      this.tileInputs?.google3d && (this.tileInputs.google3d.checked = ok);
+    }
+    if (tiles.osmBuildings && settings.ionToken) {
+      const ok = await this.setTileset("osmBuildings", true);
+      this.tileInputs?.osmBuildings && (this.tileInputs.osmBuildings.checked = ok);
+    }
+  }
+
   async setTileset(id, on) {
     const viewer = this.viewer;
     if (!on) {
@@ -257,7 +277,11 @@ export class LayerManager {
         viewer.scene.primitives.remove(this.tilesets[id]);
         delete this.tilesets[id];
       }
-      if (id === "google3d") viewer.scene.globe.show = true;
+      if (id === "google3d") {
+        viewer.scene.globe.show = true;
+        this.onGoogle3d?.(false);
+      }
+      this.saveTile(id, false);
       return true;
     }
     try {
@@ -272,6 +296,8 @@ export class LayerManager {
           {},
         );
         viewer.scene.globe.show = false;
+        this.onGoogle3d?.(true);
+        toast("Cidades 3D fotorrealistas ativadas (Google).", 3000);
       } else if (id === "osmBuildings") {
         if (!settings.ionToken) {
           toast("Prédios 3D exigem um token gratuito do Cesium ion (Configurações).", 4500);
@@ -281,6 +307,7 @@ export class LayerManager {
       }
       viewer.scene.primitives.add(tileset);
       this.tilesets[id] = tileset;
+      this.saveTile(id, true);
       return true;
     } catch (err) {
       console.error(err);
@@ -347,13 +374,15 @@ export class LayerManager {
     const td = document.getElementById("threeDOptions");
     td.innerHTML = "";
     const tdOpts = [
-      { id: "google3d", name: "Cidades 3D fotorrealistas", sub: "Google Photorealistic 3D Tiles (requer chave)" },
+      { id: "google3d", name: "Cidades 3D fotorrealistas (com textura)", sub: "Mesmos dados 3D do Google Earth – requer chave Google em Configurações" },
       { id: "osmBuildings", name: "Prédios 3D (Cesium OSM Buildings)", sub: "Versão otimizada, requer token Cesium ion" },
     ];
+    this.tileInputs = {};
     for (const t of tdOpts) {
       const label = document.createElement("label");
       label.innerHTML = `<input type="checkbox"/> <span>${t.name}<small>${t.sub}</small></span>`;
       const input = label.querySelector("input");
+      this.tileInputs[t.id] = input;
       input.addEventListener("change", async () => {
         const ok = await this.setTileset(t.id, input.checked);
         if (!ok) input.checked = false;

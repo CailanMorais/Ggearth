@@ -65,7 +65,7 @@ export class OsmBuildings {
   setEnabled(on) {
     this.enabled = on;
     storageSet("ggearth.osm3d", on);
-    this.collection.show = on;
+    this.collection.show = on && this.viewer.scene.globe.show;
     if (on) this.update();
   }
 
