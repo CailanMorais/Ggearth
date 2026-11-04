@@ -31,6 +31,7 @@ export class DrawSession {
     this.handler.setInputAction((e) => {
       this.mouse = pickCartesian(v, e.endPosition) ?? this.mouse;
       if (this.positions.length) this.changed();
+      v.scene.requestRender();
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
     this.handler.setInputAction(() => {
       this.positions.pop();
@@ -99,6 +100,7 @@ export class DrawSession {
     while (this.vertexEntities.length > this.positions.length) this.viewer.entities.remove(this.vertexEntities.pop());
     document.getElementById("toolText").innerHTML = this.text?.(this.positions, this.mouse) ?? "";
     this.onChange?.(this.positions, this.mouse);
+    this.viewer.scene.requestRender();
   }
 
   cleanup() {

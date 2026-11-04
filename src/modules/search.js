@@ -20,16 +20,62 @@ export class Search {
     this.form = document.getElementById("searchForm");
     this.input = document.getElementById("searchInput");
     this.results = document.getElementById("searchResults");
-    this.form.addEventListener("submit", (e) => {
+    this.dropdown = document.getElementById("searchDropdown");
+    this.clearBtn = document.getElementById("searchClear");
+    this.seq = 0;
+    this.lastData = null;
+    this.lastQuery = "";
+
+    this.form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      this.search(this.input.value);
+      const q = this.input.value.trim();
+      if (!q) return;
+      if (this.lastData?.length && q === this.lastQuery) return this.goResult(this.lastData[0]);
+      await this.search(q, true);
     });
     let t;
     this.input.addEventListener("input", () => {
       clearTimeout(t);
-      if (this.input.value.trim().length >= 3) t = setTimeout(() => this.search(this.input.value, false), 650);
+      const q = this.input.value.trim();
+      this.clearBtn.hidden = !q;
+      this.open();
+      if (q.length >= 3 && !parseCoords(q)) t = setTimeout(() => this.search(q, false), 450);
+      else if (!q) this.results.innerHTML = "";
+    });
+    this.input.addEventListener("focus", () => this.open());
+    this.input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        this.close();
+        this.input.blur();
+      }
+    });
+    this.clearBtn.addEventListener("click", () => {
+      this.input.value = "";
+      this.clearBtn.hidden = true;
+      this.results.innerHTML = "";
+      this.lastData = null;
+      this.input.focus();
+    });
+    // Fecha ao tocar fora (no mapa, painéis etc.)
+    document.addEventListener("pointerdown", (e) => {
+      if (!document.getElementById("topSearch").contains(e.target)) this.close();
     });
     this.renderHistory();
+  }
+
+  open() {
+    const hasRecent = this.history.length > 0;
+    document.getElementById("recentBox").hidden = !hasRecent || this.input.value.trim().length > 0;
+    this.dropdown.hidden = !(this.results.children.length || (hasRecent && !this.input.value.trim()));
+  }
+
+  close() {
+    this.dropdown.hidden = true;
+  }
+
+  focus() {
+    this.input.focus();
+    this.input.select();
   }
 
   async search(q, flyFirst = true) {
@@ -41,16 +87,24 @@ export class Search {
       this.go({ name: `${coords.lat}, ${coords.lon}`, lat: coords.lat, lon: coords.lon });
       return;
     }
+    const seq = ++this.seq;
     this.results.innerHTML = `<li class="muted">Pesquisando…</li>`;
+    this.open();
     try {
       const data = await fetchJson(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&accept-language=pt-BR&extratags=1&namedetails=1&q=${encodeURIComponent(q)}`,
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&accept-language=pt-BR&extratags=1&namedetails=1&q=${encodeURIComponent(q)}`,
       );
+      if (seq !== this.seq) return;
+      this.lastData = data;
+      this.lastQuery = q;
       this.renderResults(data);
+      if (!data.length) this.results.innerHTML = `<li class="muted">Nada encontrado para “${escapeHtml(q)}”. Tente incluir a cidade ou o estado.</li>`;
+      this.open();
       if (flyFirst && data[0]) this.goResult(data[0]);
-      if (!data.length) this.results.innerHTML = `<li class="muted">Nada encontrado para “${escapeHtml(q)}”.</li>`;
     } catch (err) {
-      this.results.innerHTML = `<li class="muted">Erro na pesquisa (${escapeHtml(err.message)}).</li>`;
+      if (seq !== this.seq) return;
+      this.results.innerHTML = `<li class="muted">Não foi possível pesquisar agora (${escapeHtml(err.message)}). Verifique a conexão e tente de novo.</li>`;
+      this.open();
     }
   }
 
@@ -78,6 +132,12 @@ export class Search {
   }
 
   go(place) {
+    this.seq++; // cancela sugestões pendentes
+    this.close();
+    this.input.value = place.name;
+    this.clearBtn.hidden = false;
+    this.input.blur();
+    this.onGo?.(place);
     this.addHistory(place);
     if (place.bbox) {
       let [s, n, w, e] = place.bbox;

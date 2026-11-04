@@ -170,3 +170,95 @@ export async function flyToPlace(viewer, place, options = {}) {
 
 /** Ferramenta ativa (desenho/medição) — recebe os cliques do mapa antes do cartão de informações. */
 export const toolState = { active: null };
+
+/** Layout de celular (barra inferior + cartão em "bottom sheet"). */
+export const isMobile = () => window.matchMedia("(max-width: 640px)").matches;
+
+function openDialog(html, onReady) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "gg";
+    dlg.innerHTML = html;
+    document.body.appendChild(dlg);
+    const close = (value) => {
+      dlg.close();
+      dlg.remove();
+      resolve(value);
+    };
+    dlg.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      close(null);
+    });
+    onReady(dlg, close);
+    dlg.showModal();
+  });
+}
+
+export const PALETTE = ["#ea4335", "#4285f4", "#34a853", "#fbbc04", "#a142f4", "#ff6d01", "#24c1e0", "#ffffff"];
+
+/** Formulário de nome/descrição/cor. Resolve com {name, desc, color} ou null se cancelado. */
+export function editDialog({ title, name = "", desc = "", color = PALETTE[0], okLabel = "Salvar" }) {
+  return openDialog(
+    `<form method="dialog">
+      <h2>${escapeHtml(title)}</h2>
+      <label>Nome<input type="text" name="name" maxlength="120" value="${escapeHtml(name)}" required /></label>
+      <label>Descrição (opcional)<textarea name="desc" maxlength="2000">${escapeHtml(desc)}</textarea></label>
+      <label>Cor<div class="swatches">${PALETTE.map((c) => `<button type="button" data-c="${c}" style="background:${c}" class="${c === color ? "sel" : ""}" aria-label="Cor ${c}"></button>`).join("")}</div></label>
+      <div class="actions"><button type="button" data-act="cancel">Cancelar</button><button type="submit" class="primary">${escapeHtml(okLabel)}</button></div>
+    </form>`,
+    (dlg, close) => {
+      let chosen = color;
+      const form = dlg.querySelector("form");
+      dlg.querySelectorAll(".swatches button").forEach((b) =>
+        b.addEventListener("click", () => {
+          chosen = b.dataset.c;
+          dlg.querySelectorAll(".swatches button").forEach((x) => x.classList.toggle("sel", x === b));
+        }),
+      );
+      dlg.querySelector('[data-act="cancel"]').addEventListener("click", () => close(null));
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const n = form.name.value.trim();
+        if (!n) return form.name.focus();
+        close({ name: n, desc: form.desc.value.trim(), color: chosen });
+      });
+      setTimeout(() => {
+        form.name.focus();
+        form.name.select();
+      }, 50);
+    },
+  );
+}
+
+/** Confirmação simples (substitui window.confirm). */
+export function confirmDialog(message, okLabel = "Confirmar") {
+  return openDialog(
+    `<h2>${escapeHtml(message)}</h2><div class="actions"><button data-act="no">Cancelar</button><button data-act="yes" class="primary">${escapeHtml(okLabel)}</button></div>`,
+    (dlg, close) => {
+      dlg.querySelector('[data-act="no"]').addEventListener("click", () => close(false));
+      dlg.querySelector('[data-act="yes"]').addEventListener("click", () => close(true));
+    },
+  );
+}
+
+/** Boas-vindas na primeira visita. */
+export function welcomeDialog() {
+  const touch = window.matchMedia("(pointer: coarse)").matches;
+  return openDialog(
+    `<h2>🌍 Bem-vindo ao GGEarth</h2>
+    <ul class="tips">
+      <li><span class="ic">🔍</span><div><b>Pesquise qualquer lugar</b><span class="muted">Cidades, endereços ou coordenadas na barra do topo.</span></div></li>
+      <li><span class="ic">${touch ? "👆" : "🖱️"}</span><div><b>${touch ? "Toque" : "Clique"} no mapa</b><span class="muted">Veja o que há ali: Wikipédia, endereço e, em Londrina, os dados do lote.</span></div></li>
+      <li><span class="ic">${touch ? "✌️" : "⌨️"}</span><div><b>Veja em 3D</b><span class="muted">${touch ? "Arraste dois dedos para cima para inclinar a vista e ver relevo e prédios." : "Segure Ctrl e arraste (ou use o botão direito) para inclinar a vista."}</span></div></li>
+      <li><span class="ic">🧭</span><div><b>Explore o Voyager</b><span class="muted">Passeios guiados pelas maravilhas do mundo e do Brasil.</span></div></li>
+    </ul>
+    <div class="actions"><button data-act="ok" class="primary">Começar a explorar</button></div>`,
+    (dlg, close) => dlg.querySelector('[data-act="ok"]').addEventListener("click", () => close(true)),
+  );
+}
+
+/** "Toque" em telas de toque, "Clique" com mouse. */
+export const tapWord = (cap = false) => {
+  const w = window.matchMedia("(pointer: coarse)").matches ? "toque" : "clique";
+  return cap ? w[0].toUpperCase() + w.slice(1) : w;
+};

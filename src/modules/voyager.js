@@ -33,6 +33,7 @@ export class Voyager {
   }
 
   async visit(stop) {
+    this.onStart?.();
     this.knowledge.showWiki(stop.wiki ?? stop.name, stop.lat, stop.lon);
     return flyToPlace(this.viewer, stop, { duration: 4 });
   }

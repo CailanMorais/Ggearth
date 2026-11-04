@@ -1,5 +1,5 @@
 import * as Cesium from "cesium";
-import { formatAltitude, formatLatLon, pickCartesian, screenCenter, settings, toast, toDegrees } from "./util.js";
+import { formatAltitude, formatLatLon, groundHeight, pickCartesian, screenCenter, settings, toast, toDegrees } from "./util.js";
 
 const HOME = { lon: -50, lat: -15, height: 2.2e7 };
 
@@ -142,7 +142,8 @@ export class Navigation {
     document.addEventListener("keydown", (e) => this.flying && this.keys.add(e.key.toLowerCase()));
     document.addEventListener("keyup", (e) => this.keys.delete(e.key.toLowerCase()));
     let last = performance.now();
-    this.viewer.scene.preRender.addEventListener(() => {
+    // preUpdate roda a cada quadro mesmo no modo "renderizar só quando muda"
+    this.viewer.scene.preUpdate.addEventListener(() => {
       const now = performance.now();
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -194,6 +195,11 @@ export class Navigation {
     this.viewer.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(Number(lon), Number(lat), Number(h)),
       orientation: { heading: Cesium.Math.toRadians(Number(heading)), pitch: Cesium.Math.toRadians(Number(pitch)), roll: 0 },
+    });
+    // Garante que a câmera não fique abaixo do relevo (links antigos ou altitude informada à mão)
+    groundHeight(this.viewer, Number(lat), Number(lon)).then((ground) => {
+      const c = this.viewer.camera.positionCartographic;
+      if (c.height < ground + 30) this.viewer.camera.moveUp(ground + 150 - c.height);
     });
     return true;
   }

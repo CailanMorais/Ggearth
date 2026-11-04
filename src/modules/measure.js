@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import { DrawSession, geodesicLength, sphericalArea } from "./draw.js";
-import { formatArea, formatDistance, toast } from "./util.js";
+import { formatArea, formatDistance, tapWord, toast } from "./util.js";
 
 export class MeasureTool {
   constructor(viewer) {
@@ -18,7 +18,7 @@ export class MeasureTool {
     const pts = mouse ? [...positions, mouse] : positions;
     const toggle = `<button id="measureMode" style="margin-right:8px">${this.mode === "line" ? "⬠ Medir área" : "〰️ Medir distância"}</button>`;
     if (this.mode === "line") {
-      return `${toggle}📏 Distância: <b>${formatDistance(geodesicLength(pts))}</b> <span class="muted">· clique para adicionar pontos</span>`;
+      return `${toggle}📏 Distância: <b>${formatDistance(geodesicLength(pts))}</b> <span class="muted">· ${tapWord()} para adicionar pontos</span>`;
     }
     const closed = pts.length > 2 ? [...pts, pts[0]] : pts;
     return `${toggle}⬠ Área: <b>${formatArea(sphericalArea(pts))}</b> · Perímetro: <b>${formatDistance(geodesicLength(closed))}</b>`;

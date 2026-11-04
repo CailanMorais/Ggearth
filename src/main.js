@@ -8,7 +8,7 @@ import { MeasureTool } from "./modules/measure.js";
 import { Navigation } from "./modules/navigation.js";
 import { Projects } from "./modules/projects.js";
 import { Search } from "./modules/search.js";
-import { saveSettings, settings, toast, toolState } from "./modules/util.js";
+import { isMobile, saveSettings, settings, storageGet, storageSet, toast, toolState, welcomeDialog } from "./modules/util.js";
 import { Voyager } from "./modules/voyager.js";
 
 // ---- Chaves opcionais (Configurações ou variáveis VITE_*) ----
@@ -18,6 +18,10 @@ settings.ionToken = ionToken;
 settings.googleKey = googleKey;
 if (ionToken) Cesium.Ion.defaultAccessToken = ionToken;
 if (googleKey) Cesium.GoogleMaps.defaultApiKey = googleKey;
+
+function touchDevice() {
+  return window.matchMedia("(pointer: coarse)").matches;
+}
 
 // ---- Visualizador ----
 const viewer = new Cesium.Viewer("cesiumContainer", {
@@ -35,7 +39,8 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
   vrButton: false,
   creditContainer: document.getElementById("statusCredits"),
   contextOptions: { webgl: { preserveDrawingBuffer: true } },
-  msaaSamples: 4,
+  // Celulares: menos amostras de antisserrilhado (economiza bateria e memória)
+  msaaSamples: touchDevice() ? 1 : 4,
 });
 window.viewer = viewer; // útil para depuração
 
@@ -43,7 +48,11 @@ const scene = viewer.scene;
 scene.globe.depthTestAgainstTerrain = true;
 scene.screenSpaceCameraController.enableCollisionDetection = true;
 scene.globe.maximumScreenSpaceError = settings.highQuality ? 1.5 : 2.5;
-viewer.resolutionScale = settings.highQuality ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+const maxScale = () => (touchDevice() ? 1.5 : 2);
+viewer.resolutionScale = settings.highQuality ? Math.min(window.devicePixelRatio || 1, maxScale()) : 1;
+// Só redesenha quando algo muda (câmera, tiles, entidades): bem mais leve e economiza bateria
+scene.requestRenderMode = true;
+scene.maximumRenderTimeChange = 60; // atualiza o sol pelo menos a cada minuto
 scene.verticalExaggeration = Number(settings.exaggeration) || 1;
 scene.debugShowFramesPerSecond = !!settings.showFps;
 viewer.clock.currentTime = Cesium.JulianDate.now();
@@ -100,36 +109,77 @@ handler.setInputAction((e) => {
 // ---- Painel lateral ----
 const panel = document.getElementById("panel");
 const titles = {
-  search: "Pesquisar",
   voyager: "Voyager",
   projects: "Projetos",
   layers: "Estilo do mapa",
   history: "Imagens históricas",
   settings: "Configurações",
   help: "Ajuda",
+  more: "Mais opções",
 };
 let currentPanel = null;
 function openPanel(name) {
   if (currentPanel === name) return closePanel();
   currentPanel = name;
   panel.hidden = false;
+  document.body.classList.add("panel-open");
   document.getElementById("panelTitle").textContent = titles[name];
   document.querySelectorAll("#panelBody section").forEach((s) => s.classList.toggle("active", s.dataset.section === name));
   document.querySelectorAll(".rail-btn[data-panel]").forEach((b) => b.classList.toggle("active", b.dataset.panel === name));
-  if (name === "search") setTimeout(() => document.getElementById("searchInput").focus(), 50);
+  document.getElementById("panelBody").scrollTop = 0;
   if (name === "history") historyImg.ensureLoaded();
+  // No celular, painel e cartão disputam a mesma área: mostra um de cada vez
+  if (isMobile()) knowledge.hide();
 }
 function closePanel() {
   currentPanel = null;
   panel.hidden = true;
+  document.body.classList.remove("panel-open");
   document.querySelectorAll(".rail-btn").forEach((b) => b.classList.remove("active"));
 }
+/** No celular, fecha o painel para o usuário ver o resultado da ação no mapa. */
+function revealMap() {
+  if (isMobile()) closePanel();
+}
+knowledge.onShow = () => {
+  if (isMobile() && currentPanel) closePanel();
+};
+search.onGo = () => revealMap();
+voyager.onStart = () => revealMap();
 document.querySelectorAll(".rail-btn[data-panel]").forEach((b) => b.addEventListener("click", () => openPanel(b.dataset.panel)));
 document.getElementById("panelClose").addEventListener("click", closePanel);
 document.getElementById("luckyBtn").addEventListener("click", () => voyager.lucky());
-document.getElementById("measureBtn").addEventListener("click", () => measure.start());
+document.getElementById("measureBtn").addEventListener("click", () => {
+  revealMap();
+  measure.start();
+});
+document.querySelectorAll("[data-draw]").forEach((b) => b.addEventListener("click", revealMap));
 document.getElementById("shareBtn").addEventListener("click", () => nav.share());
 document.getElementById("screenshotBtn").addEventListener("click", () => nav.screenshot());
+document.getElementById("flyExit").addEventListener("click", () => nav.toggleFly());
+
+// "Mais opções" (celular)
+const moreActions = {
+  lucky: () => (closePanel(), voyager.lucky()),
+  history: () => openPanel("history"),
+  location: () => (closePanel(), nav.myLocation()),
+  share: () => nav.share(),
+  screenshot: () => (closePanel(), setTimeout(() => nav.screenshot(), 300)),
+  home: () => (closePanel(), nav.home()),
+  settings: () => openPanel("settings"),
+  help: () => openPanel("help"),
+};
+document.querySelectorAll("[data-action]").forEach((b) => b.addEventListener("click", () => moreActions[b.dataset.action]?.()));
+
+// ---- Barra de carregamento (tiles de imagem/relevo pendentes) ----
+const loadBar = document.getElementById("loadBar");
+let loadTimer;
+scene.globe.tileLoadProgressEvent.addEventListener((pending) => {
+  clearTimeout(loadTimer);
+  // Pequeno atraso evita "piscar" em carregamentos rápidos
+  if (pending > 0) loadTimer = setTimeout(() => (loadBar.hidden = false), 250);
+  else loadBar.hidden = true;
+});
 
 // ---- Configurações ----
 const $ = (id) => document.getElementById(id);
@@ -172,7 +222,11 @@ $("highQuality").checked = !!settings.highQuality;
 $("highQuality").addEventListener("change", (e) => {
   settings.highQuality = e.target.checked;
   scene.globe.maximumScreenSpaceError = settings.highQuality ? 1.5 : 2.5;
-  viewer.resolutionScale = settings.highQuality ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+  const maxScale = () => (touchDevice() ? 1.5 : 2);
+viewer.resolutionScale = settings.highQuality ? Math.min(window.devicePixelRatio || 1, maxScale()) : 1;
+// Só redesenha quando algo muda (câmera, tiles, entidades): bem mais leve e economiza bateria
+scene.requestRenderMode = true;
+scene.maximumRenderTimeChange = 60; // atualiza o sol pelo menos a cada minuto
   saveSettings();
 });
 
@@ -185,6 +239,8 @@ document.addEventListener("keydown", (e) => {
     else measure.clearResult();
     voyager.stop();
     knowledge.hide();
+    search.close();
+    if (!toolState.active && currentPanel && !typing) closePanel();
     if (typing) document.activeElement.blur();
     return;
   }
@@ -193,8 +249,7 @@ document.addEventListener("keydown", (e) => {
   switch (e.key.toLowerCase()) {
     case "/":
       e.preventDefault();
-      if (currentPanel !== "search") openPanel("search");
-      else $("searchInput").focus();
+      search.focus();
       break;
     case "n": nav.north(); break;
     case "u": nav.toggleTilt(); break;
@@ -206,9 +261,14 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-if (!localStorage.getItem("ggearth.welcomed")) {
-  toast("Bem-vindo ao GGEarth! Clique em qualquer lugar do globo para explorar. Pressione / para pesquisar.", 6000);
-  try { localStorage.setItem("ggearth.welcomed", "1"); } catch { /* ignora */ }
+// Boas-vindas na primeira visita
+if (!storageGet("ggearth.welcomed", false)) {
+  setTimeout(() => welcomeDialog().then(() => storageSet("ggearth.welcomed", true)), 800);
+}
+
+// Aplicativo instalável (tela inicial do celular)
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
 
 export { viewer, search, layers };

@@ -131,6 +131,7 @@ export class Cadastro {
     let html = `<div class="cad"><h3 style="margin:14px 0 6px">🏛️ Dados cadastrais – ${escapeHtml(src.nome)}</h3>`;
     let drew = false;
     let any = false;
+    let title = null;
     const errors = [];
     for (const { svc, items, error } of results) {
       if (error) {
@@ -151,6 +152,15 @@ export class Cadastro {
             drew = true;
           }
         }
+        if (!title) {
+          // Título amigável: "Lote 7, Quadra 12 – Jardim X"
+          const get = (re) => rows.find(([k]) => re.test(k))?.[1];
+          const lote = get(/^lote$|^n[uú]mero do lote|^lote\b/i);
+          const quadra = get(/quadra/i);
+          const lot = get(/loteamento|bairro|gleba/i);
+          if (lote || quadra) title = [lote && `Lote ${lote}`, quadra && `Quadra ${quadra}`].filter(Boolean).join(", ") + (lot ? ` – ${lot}` : "");
+          else if (lot) title = lot;
+        }
         if (!rows.length && !areaRow) continue;
         any = true;
         html += `<details ${svc.principal ? "open" : ""} style="margin:6px 0"><summary><b>${escapeHtml(svc.titulo)}</b> <span class="muted">· ${escapeHtml(it.layerName ?? "")}</span></summary>
@@ -164,6 +174,6 @@ export class Cadastro {
         : `<p class="muted">Nenhum lote cadastrado exatamente neste ponto. Toque dentro de um lote.</p>`;
     }
     html += `<p class="muted" style="font-size:12px">${escapeHtml(src.cartorios)} Proprietário e ônus constam apenas na matrícula, emitida pelo cartório.</p></div>`;
-    return html;
+    return { html, title };
   }
 }

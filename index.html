@@ -2,9 +2,17 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#202124" />
+  <meta name="description" content="Globo 3D interativo com imagens de satélite, relevo, prédios 3D e dados de lotes." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GGEarth" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <title>GGEarth</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
@@ -12,18 +20,18 @@
 
   <!-- Barra lateral esquerda (como no Google Earth) -->
   <nav id="rail" aria-label="Menu principal">
-    <button class="rail-btn" data-panel="search" title="Pesquisar (/)">🔍<span>Pesquisar</span></button>
-    <button class="rail-btn" data-panel="voyager" title="Voyager">🧭<span>Voyager</span></button>
-    <button class="rail-btn" id="luckyBtn" title="Estou com sorte">🎲<span>Sorte</span></button>
-    <button class="rail-btn" data-panel="projects" title="Projetos">📁<span>Projetos</span></button>
-    <button class="rail-btn" data-panel="layers" title="Estilo do mapa">🗺️<span>Camadas</span></button>
-    <button class="rail-btn" data-panel="history" title="Imagens históricas">🕰️<span>Histórico</span></button>
-    <button class="rail-btn" id="measureBtn" title="Medir distância e área">📏<span>Medir</span></button>
-    <button class="rail-btn" id="shareBtn" title="Copiar link desta vista">🔗<span>Compartilhar</span></button>
-    <button class="rail-btn" id="screenshotBtn" title="Capturar imagem">📷<span>Capturar</span></button>
+    <button class="rail-btn" data-panel="voyager" title="Voyager – passeios guiados">🧭<span>Voyager</span></button>
+    <button class="rail-btn secondary" id="luckyBtn" title="Estou com sorte">🎲<span>Sorte</span></button>
+    <button class="rail-btn" data-panel="layers" title="Estilo do mapa e camadas">🗺️<span>Camadas</span></button>
+    <button class="rail-btn" data-panel="projects" title="Meus lugares e desenhos">📁<span>Projetos</span></button>
+    <button class="rail-btn secondary" data-panel="history" title="Imagens históricas">🕰️<span>Histórico</span></button>
+    <button class="rail-btn" id="measureBtn" title="Medir distância e área (M)">📏<span>Medir</span></button>
+    <button class="rail-btn secondary" id="shareBtn" title="Copiar link desta vista">🔗<span>Compartilhar</span></button>
+    <button class="rail-btn secondary" id="screenshotBtn" title="Salvar imagem da vista">📷<span>Capturar</span></button>
     <div class="rail-spacer"></div>
-    <button class="rail-btn" data-panel="settings" title="Configurações">⚙️<span>Config.</span></button>
-    <button class="rail-btn" data-panel="help" title="Ajuda e atalhos">❔<span>Ajuda</span></button>
+    <button class="rail-btn secondary" data-panel="settings" title="Configurações">⚙️<span>Config.</span></button>
+    <button class="rail-btn secondary" data-panel="help" title="Ajuda e atalhos">❔<span>Ajuda</span></button>
+    <button class="rail-btn mobile-only" data-panel="more" title="Mais opções">☰<span>Mais</span></button>
   </nav>
 
   <!-- Painel lateral -->
@@ -31,14 +39,17 @@
     <header><h2 id="panelTitle"></h2><button id="panelClose" title="Fechar">✕</button></header>
     <div id="panelBody">
 
-      <section data-section="search">
-        <form id="searchForm" autocomplete="off">
-          <input id="searchInput" type="search" placeholder="Pesquise lugares, endereços ou lat, lon" />
-          <button type="submit">Ir</button>
-        </form>
-        <ul id="searchResults" class="list"></ul>
-        <h3>Pesquisas recentes</h3>
-        <ul id="searchHistory" class="list small"></ul>
+      <section data-section="more">
+        <div class="tiles">
+          <button data-action="lucky">🎲<span>Estou com sorte</span></button>
+          <button data-action="history">🕰️<span>Imagens históricas</span></button>
+          <button data-action="location">◎<span>Minha localização</span></button>
+          <button data-action="share">🔗<span>Compartilhar vista</span></button>
+          <button data-action="screenshot">📷<span>Salvar imagem</span></button>
+          <button data-action="home">🌐<span>Ver o globo</span></button>
+          <button data-action="settings">⚙️<span>Configurações</span></button>
+          <button data-action="help">❔<span>Ajuda</span></button>
+        </div>
       </section>
 
       <section data-section="voyager">
@@ -117,11 +128,12 @@
           <li><b>Roda do mouse</b>: zoom</li>
           <li><b>Ctrl + arrastar</b> / botão direito: inclinar e girar</li>
           <li><b>Duplo clique</b>: aproximar do ponto</li>
-          <li><b>Clique</b>: ver informações do local (Wikipedia, coordenadas, Street View)</li>
+          <li><b>Clique / toque</b>: informações do local (Wikipédia, endereço, dados do lote em Londrina)</li>
+          <li><b>No celular</b>: um dedo move, pinça dá zoom, dois dedos para cima/baixo inclinam, girar com dois dedos gira</li>
         </ul>
         <h3>Atalhos</h3>
         <ul class="help">
-          <li><kbd>/</kbd> pesquisar</li>
+          <li><kbd>/</kbd> ir para a pesquisa</li>
           <li><kbd>N</kbd> apontar para o norte · <kbd>U</kbd> vista de cima</li>
           <li><kbd>R</kbd> redefinir vista · <kbd>+</kbd>/<kbd>-</kbd> zoom</li>
           <li><kbd>F</kbd> modo voo (W/S acelera, A/D gira, Q/E sobe/desce, setas olham)</li>
@@ -134,15 +146,16 @@
   </aside>
 
   <!-- Cartão de conhecimento -->
-  <div id="infoCard" hidden>
-    <button id="infoClose" title="Fechar">✕</button>
+  <div id="infoCard" hidden role="dialog" aria-labelledby="infoTitle">
+    <div id="infoHandle" aria-label="Expandir ou recolher"></div>
+    <button id="infoClose" title="Fechar" aria-label="Fechar">✕</button>
     <img id="infoImg" alt="" hidden />
     <div class="info-content">
       <h2 id="infoTitle"></h2>
       <p id="infoCoords" class="muted"></p>
+      <div class="toolbar" id="infoActions"></div>
       <p id="infoText"></p>
       <div id="infoExtra"></div>
-      <div class="toolbar" id="infoActions"></div>
     </div>
   </div>
 
@@ -172,8 +185,22 @@
     <span id="statusCam"></span>
   </footer>
 
-  <div id="toast" hidden></div>
-  <div id="flyHud" hidden>✈️ Modo voo — <span id="flySpeedHud">0</span> km/h · F para sair</div>
+  <div id="toast" hidden role="status" aria-live="polite"></div>
+  <div id="flyHud" hidden>✈️ Modo voo — <span id="flySpeedHud">0</span> km/h · <button id="flyExit">Sair</button></div>
+  <div id="loadBar" hidden></div>
+
+  <!-- Pesquisa sempre visível -->
+  <div id="topSearch">
+    <form id="searchForm" autocomplete="off" role="search">
+      <span class="ts-icon" aria-hidden="true">🔍</span>
+      <input id="searchInput" type="search" enterkeyhint="search" placeholder="Pesquisar lugar, endereço ou coordenadas" aria-label="Pesquisar" />
+      <button type="button" id="searchClear" title="Limpar" aria-label="Limpar" hidden>✕</button>
+    </form>
+    <div id="searchDropdown" hidden>
+      <ul id="searchResults" class="list"></ul>
+      <div id="recentBox"><h3>Recentes</h3><ul id="searchHistory" class="list small"></ul></div>
+    </div>
+  </div>
 
   <script type="module" src="./src/main.js"></script>
 </body>

@@ -93,6 +93,7 @@ export class Knowledge {
     this.projects = projects;
     this.card = document.getElementById("infoCard");
     document.getElementById("infoClose").addEventListener("click", () => this.hide());
+    this.bindSheet();
     this.wikiDs = new Cesium.CustomDataSource("wikipedia");
     viewer.dataSources.add(this.wikiDs);
     this.wikiOn = storageGet("ggearth.wiki", true);
@@ -162,6 +163,26 @@ export class Knowledge {
     }
   }
 
+  /** Alça do "bottom sheet": toque expande/recolhe, arrastar para baixo fecha. */
+  bindSheet() {
+    const handle = document.getElementById("infoHandle");
+    let startY = null;
+    handle.addEventListener("pointerdown", (e) => {
+      startY = e.clientY;
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener("pointerup", (e) => {
+      if (startY == null) return;
+      const dy = e.clientY - startY;
+      startY = null;
+      if (dy > 50) {
+        if (this.card.classList.contains("expanded")) this.card.classList.remove("expanded");
+        else this.hide();
+      } else if (dy < -30) this.card.classList.add("expanded");
+      else this.card.classList.toggle("expanded");
+    });
+  }
+
   hide() {
     this.seq++;
     this.extraHtml = "";
@@ -200,7 +221,12 @@ export class Knowledge {
     }
     for (const a of actions ?? []) act.appendChild(a);
     document.getElementById("infoExtra").innerHTML = this.extraHtml;
+    if (this.card.hidden) {
+      this.card.classList.remove("expanded");
+      this.card.scrollTop = 0;
+    }
     this.card.hidden = false;
+    this.onShow?.();
   }
 
   locationActions(lat, lon, name) {
@@ -228,11 +254,8 @@ export class Knowledge {
             link("📜 Certidão de matrícula (ONR)", "https://ridigital.org.br/"),
           ]
         : []),
-      mk("📍 Salvar no projeto", () => {
-        this.projects.addPointAt(lat, lon, name);
-        toast("Marcador adicionado ao projeto.");
-      }),
-      mk("📋 Copiar coordenadas", async () => {
+      mk("📍 Salvar", () => this.projects.addPointAt(lat, lon, name)),
+      mk("📋 Coordenadas", async () => {
         try {
           await navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
           toast("Coordenadas copiadas.");
@@ -273,14 +296,26 @@ export class Knowledge {
     const seq = ++this.seq;
     this.marker(lat, lon);
     this.cadastro.clear();
-    this.extraHtml = cadastroFor(lat, lon) ? `<p class="muted">🏛️ Consultando o cadastro da prefeitura…</p>` : "";
-    if (this.extraHtml) {
+    const zoomLevel = opts.zoom ?? zoomForHeight(this.viewer.camera.positionCartographic.height);
+    const covered = !!cadastroFor(lat, lon);
+    // Dados de lote só fazem sentido quando o usuário está olhando lotes (zoom de rua/prédio)
+    const lotZoom = covered && zoomLevel >= 15;
+    this.extraHtml = lotZoom
+      ? `<p class="muted">🏛️ Consultando o cadastro da prefeitura…</p>`
+      : covered
+        ? `<p class="muted">🏛️ Aproxime até ver as quadras e toque num lote para ver os dados cadastrais.</p>`
+        : "";
+    if (lotZoom) {
       this.cadastro
         .lookup(lat, lon)
-        .then((html) => {
+        .then((res) => {
           if (seq !== this.seq) return;
-          this.extraHtml = html ?? "";
+          this.extraHtml = res?.html ?? "";
           document.getElementById("infoExtra").innerHTML = this.extraHtml;
+          if (res?.title) {
+            this.lotTitle = res.title;
+            document.getElementById("infoTitle").textContent = res.title;
+          }
         })
         .catch((err) => {
           if (seq !== this.seq) return;
@@ -288,10 +323,11 @@ export class Knowledge {
           document.getElementById("infoExtra").innerHTML = this.extraHtml;
         });
     }
+    this.lotTitle = null;
     const coords = `${formatLatLon(lat, lon)}  ·  ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
     this.render({ title: opts.name ?? "Local selecionado", coords, text: "<span class='muted'>Buscando informações…</span>", actions: this.locationActions(lat, lon, opts.name) });
 
-    const zoom = opts.zoom ?? zoomForHeight(this.viewer.camera.positionCartographic.height);
+    const zoom = zoomLevel;
     const r = opts.address ? null : await reverseGeocode(lat, lon, zoom);
     if (seq !== this.seq) return;
     const tags = opts.tags ?? r?.extratags ?? null;
@@ -328,7 +364,7 @@ export class Knowledge {
       }
     }
     this.render({
-      title: name,
+      title: this.lotTitle ?? name,
       coords,
       text: html || "Sem informações para este ponto.",
       image: summary?.thumbnail?.source,

@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import { DrawSession, geodesicLength, sphericalArea } from "./draw.js";
-import { download, escapeHtml, formatArea, formatDistance, storageGet, storageSet, toast, toDegrees } from "./util.js";
+import { tapWord, confirmDialog, download, editDialog, escapeHtml, formatArea, formatDistance, storageGet, storageSet, toast, toDegrees } from "./util.js";
 
 const KEY = "ggearth.project";
 const COLORS = ["#ea4335", "#4285f4", "#34a853", "#fbbc04", "#a142f4", "#ff6d01", "#24c1e0"];
@@ -34,15 +34,16 @@ export class Projects {
       color: Cesium.Color.fromCssColorString(color),
       text: (p) =>
         type === "point"
-          ? "📍 Clique no mapa para posicionar o marcador"
-          : `${ICONS[type]} ${p.length} ponto(s) · clique para adicionar, duplo clique para concluir, botão direito desfaz`,
-      onFinish: (positions) => {
-        const name = window.prompt("Nome:", this.nextName(type));
-        if (name === null) return;
-        this.add({ type, name: name || this.nextName(type), desc: "", color, coords: positions.map((p) => {
+          ? `📍 ${tapWord(true)} no mapa para posicionar o marcador`
+          : `${ICONS[type]} ${p.length} ponto(s) · ${tapWord()} para adicionar pontos e depois em Concluir`,
+      onFinish: async (positions) => {
+        const res = await editDialog({ title: `Novo ${{ point: "marcador", line: "caminho", polygon: "polígono" }[type]}`, name: this.nextName(type), color });
+        if (!res) return;
+        this.add({ type, name: res.name, desc: res.desc, color: res.color, coords: positions.map((p) => {
           const d = toDegrees(p);
           return [d.lon, d.lat, Math.max(0, d.height)];
         }) });
+        toast(`“${res.name}” salvo em Projetos.`);
       },
     }).start();
   }
@@ -55,8 +56,12 @@ export class Projects {
     return item;
   }
 
-  addPointAt(lat, lon, name) {
-    return this.add({ type: "point", name: name || this.nextName("point"), desc: "", color: COLORS[0], coords: [[lon, lat, 0]] });
+  async addPointAt(lat, lon, name) {
+    const res = await editDialog({ title: "Salvar lugar", name: name || this.nextName("point"), color: COLORS[0] });
+    if (!res) return null;
+    const item = this.add({ type: "point", name: res.name, desc: res.desc, color: res.color, coords: [[lon, lat, 0]] });
+    toast(`“${res.name}” salvo em Projetos.`);
+    return item;
   }
 
   remove(id) {
@@ -65,14 +70,12 @@ export class Projects {
     this.renderAll();
   }
 
-  edit(id) {
+  async edit(id) {
     const item = this.items.find((i) => i.id === id);
     if (!item) return;
-    const name = window.prompt("Nome:", item.name);
-    if (name === null) return;
-    const desc = window.prompt("Descrição:", item.desc ?? "");
-    item.name = name || item.name;
-    if (desc !== null) item.desc = desc;
+    const res = await editDialog({ title: "Editar", name: item.name, desc: item.desc ?? "", color: item.color });
+    if (!res) return;
+    Object.assign(item, res);
     this.save();
     this.renderAll();
   }
@@ -141,7 +144,9 @@ export class Projects {
       li.addEventListener("click", (e) => {
         const act = e.target.dataset?.act;
         if (act === "edit") return this.edit(item.id);
-        if (act === "del") return this.remove(item.id);
+        if (act === "del") {
+          return confirmDialog(`Excluir “${item.name}”?`, "Excluir").then((ok) => ok && this.remove(item.id));
+        }
         this.flyTo(item.id);
       });
       ul.appendChild(li);
@@ -159,8 +164,8 @@ export class Projects {
     document.getElementById("exportGeojson").addEventListener("click", () =>
       download("ggearth-projeto.geojson", JSON.stringify(this.toGeoJson(), null, 2), "application/geo+json"),
     );
-    document.getElementById("clearProject").addEventListener("click", () => {
-      if (this.items.length && confirm("Excluir todos os itens do projeto?")) {
+    document.getElementById("clearProject").addEventListener("click", async () => {
+      if (this.items.length && (await confirmDialog("Excluir todos os itens do projeto?", "Excluir tudo"))) {
         this.items = [];
         this.save();
         this.renderAll();

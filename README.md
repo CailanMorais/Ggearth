@@ -38,6 +38,13 @@ npm run build    # gera a pasta dist/ (site estático, pode ir para GitHub Pages
 | Simulador de voo | ✅ Modo voo pelo teclado (tecla **F**) | — |
 | Bússola, 2D/3D, zoom, tela cheia | ✅ | — |
 
+### Experiência no celular
+- Barra de pesquisa sempre visível no topo, com sugestões enquanto digita e pesquisas recentes
+- Barra inferior com Voyager, Camadas, Projetos, Medir e **Mais**
+- Cartão de informações em "bottom sheet": toque na alça para expandir, arraste para baixo para fechar
+- Painéis e cartão nunca se sobrepõem; ao pesquisar ou iniciar um passeio, o mapa fica visível
+- Instalável na tela inicial (manifest + ícones); renderização sob demanda para economizar bateria
+
 ### Atalhos
 `/` pesquisar · `N` norte · `U` vista de cima/3D · `R` visão do globo · `+`/`-` zoom · `F` modo voo · `M` medir · `Esc` cancelar
 
